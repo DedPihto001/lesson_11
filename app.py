@@ -51,10 +51,21 @@ class BookingApp(tk.Tk):
     ) -> ttk.Treeview:
         container = ttk.Frame(parent)
         container.pack(fill="both", expand=True, pady=(0, 10))
-        tree = ttk.Treeview(parent, columns=columns, show="headings", height=12)
+        tree = ttk.Treeview(container, columns=columns, show="headings", height=12)
+        widths = {
+            "id": 55,
+            "user_id": 80,
+            "user_name": 135,
+            "user_email": 170,
+            "table_id": 70,
+            "table_number": 100,
+            "booking_time": 145,
+            "duration_minutes": 125,
+            "created_at": 145,
+        }
         for column in columns:
             tree.heading(column, text=headings.get(column, column))
-            tree.column(column, width=125, anchor="w")
+            tree.column(column, width=widths.get(column, 125), anchor="w")
         vertical = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
         horizontal = ttk.Scrollbar(
             container, orient="horizontal", command=tree.xview

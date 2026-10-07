@@ -40,6 +40,26 @@ def init_db() -> None:
     with get_cursor() as cursor:
         for statement in statements:
             cursor.execute(statement)
+        # Preserve rows from the earlier Les10 schema, which stored age but
+        # did not yet have an email or creation timestamp.
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(150)")
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()"
+        )
+        cursor.execute(
+            """
+            UPDATE users
+            SET email = 'legacy-user-' || id || '@example.invalid'
+            WHERE email IS NULL OR email = ''
+            """
+        )
+        cursor.execute("ALTER TABLE users ALTER COLUMN email SET NOT NULL")
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx
+            ON users (email)
+            """
+        )
 
 
 def _validate_duration(duration_minutes: int) -> None:
@@ -314,9 +334,35 @@ def seed_demo_data() -> None:
             else create_table(number, seats, description)
         )
 
-    start = (datetime.now() + timedelta(days=1)).replace(second=0, microsecond=0)
-    create_booking(user_ids[0], table_ids[0], start, 60)
-    create_booking(user_ids[1], table_ids[1], start + timedelta(hours=1), 90)
+    tomorrow = (datetime.now() + timedelta(days=1)).date()
+    for user_id, table_id, hour, duration in (
+        (user_ids[0], table_ids[0], 18, 60),
+        (user_ids[1], table_ids[1], 19, 90),
+    ):
+        booking_time = datetime.combine(tomorrow, datetime.min.time()).replace(
+            hour=hour
+        )
+        with get_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id FROM bookings
+                WHERE user_id = %s AND table_id = %s
+                  AND booking_time >= %s AND duration_minutes = %s
+                """,
+                (user_id, table_id, booking_time, duration),
+            )
+            existing = cursor.fetchone()
+        if existing is not None:
+            continue
+        for extra_day in range(31):
+            candidate = booking_time + timedelta(days=extra_day)
+            if check_table_availability(table_id, candidate, duration):
+                create_booking(user_id, table_id, candidate, duration)
+                break
+        else:
+            raise RuntimeError(
+                f"No free demo slot found for table {table_id} in the next 31 days"
+            )
 
 
 def main() -> None:
